@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: shuttle
+  namespace: dev-application
+  labels:
+    app: shuttle
+spec:
+  selector:
+    app: shuttle
+  ports:
+    - port: 80
+      targetPort: 8069
+      protocol: TCP
+
+---
+
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  namespace: dev-application
+  name: shuttle
+spec:
+  tls:
+  - hosts:
+      - shuttle.snsoftware.com
+    secretName: wildcard
+  rules:
+  - host: shuttle.snsoftware.com
+    http:
+      paths:
+      - backend:
+          serviceName: shuttle
+          servicePort: 80
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shuttle
+  namespace: dev-application
+  labels:
+    app: shuttle
+spec:
+  selector:
+    matchLabels:
+      app: shuttle
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: shuttle
+    spec:
+      containers:
+        - name: shuttle
+          image: registry.prod-devops.svc.cluster.local/shuttle
+          ports:
+          - containerPort: 80
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: shuttle
+                  key: db.host
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: shuttle
+                  key: db.port
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: shuttle
+                  key: db.name
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: shuttle
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shuttle
+                  key: password
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /var/lib/odoo
+              name: odoo-data-volume
+            - mountPath: /mnt/extra-addons
+              name: odoo-addons-volume
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+        - name: regcred
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: { }
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: odoo-data-volume
+          persistentVolumeClaim:
+            claimName: shuttle-data
+        - name: odoo-addons-volume
+          persistentVolumeClaim:
+            claimName: shuttle-addons
